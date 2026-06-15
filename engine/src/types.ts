@@ -1,0 +1,122 @@
+/**
+ * Core types for the ShipReady engine.
+ * Shared between engine/ (Node) and app/ (Next.js).
+ */
+
+export type Severity = "critical" | "recommended" | "optional";
+
+export type IssueStatus = "missing" | "present" | "warning";
+
+export type BusinessType = "saas" | "ecommerce" | "blog" | "portfolio" | "other";
+
+export type Region = "us" | "eu" | "uk" | "ca" | "au" | "global";
+
+/**
+ * The 5 context questions. Each one unlocks specific scanners, generators,
+ * and template variants. The goal: generate policy text that matches the
+ * actual product, not a generic "we collect data" boilerplate.
+ */
+export interface ProjectContext {
+  /** Does the product collect user emails? (sign-up, newsletter, contact form) */
+  collectsEmails: boolean;
+  /** Does the product process payments? (Stripe, Paddle, LemonSqueezy, etc.) */
+  processesPayments: boolean;
+  /** Does the product serve users in the EU/EEA/UK? (triggers GDPR) */
+  servesEuUsers: boolean;
+  /** Does the product use cookies? (analytics, auth, ads, etc.) */
+  usesCookies: boolean;
+  /** What kind of product is this? */
+  businessType: BusinessType;
+  /** Primary jurisdiction for legal text */
+  region: Region;
+}
+
+/**
+ * A single issue found by a scanner.
+ */
+export interface Issue {
+  /** Stable identifier, e.g. "missing-privacy-policy" */
+  id: string;
+  /** Scanner category, e.g. "legal", "secrets", "license" */
+  category: "legal" | "secrets" | "license" | "seo" | "errors" | "security" | "meta" | "a11y" | "broken-links" | "performance";
+  /** Human-readable title */
+  title: string;
+  /** 1-2 sentence description of what's wrong and why it matters */
+  description: string;
+  /** Severity classification */
+  severity: Severity;
+  /** Current status: missing (not found), present (good), warning (incomplete) */
+  status: IssueStatus;
+  /** Optional path to the file in the repo that triggered this issue */
+  file?: string;
+  /** Optional line number */
+  line?: number;
+  /** If status === "present", the path of the existing file */
+  existingFile?: string;
+}
+
+/**
+ * A generated fix for an issue. The engine produces a list of these.
+ */
+export interface Fix {
+  /** Path where the file should be written, relative to repo root */
+  path: string;
+  /** Full file contents */
+  content: string;
+  /** Description of what this file does */
+  description: string;
+  /** The issue this fix resolves */
+  issueId: string;
+  /** Whether this is a new file (true) or a modification (false) */
+  isNew: boolean;
+}
+
+/**
+ * The result of a scan.
+ */
+export interface ScanResult {
+  /** Unique scan ID (for /scan/[id] URLs) */
+  id: string;
+  /** Repo info */
+  repo: {
+    owner: string;
+    name: string;
+    defaultBranch: string;
+    commitSha: string;
+    fileCount: number;
+  };
+  /** The context the user provided */
+  context: ProjectContext;
+  /** Issues found, sorted by severity (critical first) */
+  issues: Issue[];
+  /** The score, 0-100 */
+  score: number;
+  /** When the scan was run */
+  scannedAt: string;
+  /** How long the scan took in ms */
+  durationMs: number;
+}
+
+/**
+ * A list of files in the repo (recursive). We use this to decide what to scan.
+ */
+export interface RepoFile {
+  path: string;
+  type: "file" | "dir";
+  size?: number;
+  /** Only populated when content is fetched */
+  content?: string;
+  /** Last commit SHA that touched this file */
+  sha?: string;
+}
+
+/**
+ * Result of fetching the file tree.
+ */
+export interface RepoTree {
+  owner: string;
+  name: string;
+  defaultBranch: string;
+  commitSha: string;
+  files: RepoFile[];
+}

@@ -1,4 +1,7 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# ─────────────────────────────────────────────────────────────────────
+# ShipReady .gitignore
+# Next.js monorepo (app/ + engine/)
+# ─────────────────────────────────────────────────────────────────────
 
 # dependencies
 /node_modules
@@ -10,8 +13,13 @@
 !.yarn/releases
 !.yarn/versions
 
+# engine (sibling monorepo package)
+/engine/dist/
+/engine/coverage/
+
 # testing
 /coverage
+*.lcov
 
 # next.js
 /.next/
@@ -20,22 +28,46 @@
 # production
 /build
 
-# misc
+# misc — OS noise
 .DS_Store
-*.pem
+Thumbs.db
+desktop.ini
+ehthumbs.db
+ehthumbs_vista.db
+*.lnk
 
-# debug
+# misc — editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# debug logs (root)
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
+logs/
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — keep .env.example tracked
+.env
+.env.*
+!.env.example
+!.env.sample
 
 # vercel
 .vercel
 
-# typescript
+# typescript build cache
 *.tsbuildinfo
 next-env.d.ts
+
+# OS temp / generated
+.tmp/
+.temp/
+.cache/
+.eslintcache
