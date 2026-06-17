@@ -1,12 +1,63 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ArrowLeft, Check } from "lucide-react";
+import { ArrowRight, ArrowLeft, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CONTEXT_QUESTIONS, REGION_QUESTION, type ProjectContext } from "@/engine/src/context";
 import type { BusinessType, Region } from "@/engine/src/types";
+import type { Framework } from "@/engine/src/framework";
+
+type FrameworkAnswer = Framework | "unknown";
+
+/**
+ * Framework question — separate from CONTEXT_QUESTIONS because:
+ *   1. It's repo-specific (only shown when a repo is being scanned)
+ *   2. It needs a "detecting..." async state during pre-fill
+ *   3. It conceptually belongs to repo metadata, not business/legal context
+ */
+const FRAMEWORK_OPTIONS: Array<{
+  value: FrameworkAnswer;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "nextjs",
+    label: "Next.js",
+    description: "React framework with App Router or Pages Router",
+  },
+  {
+    value: "vite",
+    label: "Vite",
+    description: "Static or SPA React/Vue/Svelte/etc.",
+  },
+  {
+    value: "astro",
+    label: "Astro",
+    description: "Content-focused, ships zero JS by default",
+  },
+  {
+    value: "remix",
+    label: "Remix",
+    description: "Full-stack React, nested routing",
+  },
+  {
+    value: "sveltekit",
+    label: "SvelteKit",
+    description: "Full-stack Svelte, file-based routing",
+  },
+  {
+    value: "unknown",
+    label: "Not sure / other",
+    description: "We'll generate generic static files",
+  },
+];
+
+const FRAMEWORK_LABELS: Record<FrameworkAnswer, string> = FRAMEWORK_OPTIONS.reduce(
+  (acc, opt) => ({ ...acc, [opt.value]: opt.label }),
+  {} as Record<FrameworkAnswer, string>
+);
 
 export default function OnboardPageWrapper() {
   return (
@@ -32,6 +83,7 @@ function OnboardPage() {
 
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Record<string, boolean | string>>({
+    framework: "unknown",
     collectsEmails: false,
     processesPayments: false,
     servesEuUsers: true,
@@ -40,15 +92,81 @@ function OnboardPage() {
     region: "us",
   });
 
-  const allQuestions = [...CONTEXT_QUESTIONS, REGION_QUESTION];
+  // Framework detection state — only used when repoUrl is present.
+  // status: idle (no repo), detecting (in flight), detected, error
+  const [detectStatus, setDetectStatus] = useState<
+    "idle" | "detecting" | "detected" | "error"
+  >(repoUrl ? "detecting" : "idle");
+  const [detectedFramework, setDetectedFramework] =
+    useState<FrameworkAnswer | null>(null);
+
+  // Auto-detect framework on mount when we have a repo.
+  useEffect(() => {
+    if (!repoUrl) return;
+    let cancelled = false;
+    setDetectStatus("detecting");
+    fetch("/api/detect-framework", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ repoUrl }),
+    })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (!res.ok) {
+          setDetectStatus("error");
+          return;
+        }
+        const data: { framework: Framework; label: string } = await res.json();
+        if (cancelled) return;
+        setDetectedFramework(data.framework);
+        // Pre-fill the answer with the detected value (unless user already picked one)
+        setAnswers((a) =>
+          a.framework === "unknown" ? { ...a, framework: data.framework } : a
+        );
+        setDetectStatus("detected");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setDetectStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repoUrl]);
+
+  // Question order: if we have a repo, framework is step 0.
+  // Otherwise, jump straight to the standard 5+1 questions.
+  const frameworkStep = repoUrl
+    ? [
+        {
+          id: "framework" as const,
+          type: "framework" as const,
+          question: "What framework is this built with?",
+          hint: "We auto-detect this from your repo — confirm or change it",
+          why: "Different frameworks use different conventions for sitemaps, error pages, manifest files, and meta tags. Knowing the framework lets us generate the right files in the right place.",
+        },
+      ]
+    : [];
+
+  const allQuestions = [
+    ...frameworkStep,
+    ...CONTEXT_QUESTIONS,
+    REGION_QUESTION,
+  ];
   const current = allQuestions[step];
   const isLast = step === allQuestions.length - 1;
+  const isFrameworkStep = current.id === "framework";
 
-  function setAnswer(id: keyof ProjectContext, value: boolean | string) {
+  function setAnswer(id: keyof ProjectContext | "framework", value: boolean | string) {
     setAnswers((a) => ({ ...a, [id]: value }));
   }
 
+  // Block Continue while detection is in flight, so the user doesn't
+  // skip past the framework step before we have a sensible default.
+  const canContinue = !isFrameworkStep || detectStatus !== "detecting";
+
   function next() {
+    if (!canContinue) return;
     if (isLast) {
       const params = new URLSearchParams({
         repo: repoUrl,
@@ -125,7 +243,14 @@ function OnboardPage() {
             </button>
 
             <div className="mt-10">
-              {current.type === "boolean" ? (
+              {isFrameworkStep ? (
+                <FrameworkInput
+                  status={detectStatus}
+                  detectedFramework={detectedFramework}
+                  value={answers.framework as FrameworkAnswer}
+                  onChange={(v) => setAnswer("framework", v)}
+                />
+              ) : current.type === "boolean" ? (
                 <BooleanInput
                   value={answers[current.id] as boolean}
                   onChange={(v) => setAnswer(current.id, v)}
@@ -152,7 +277,11 @@ function OnboardPage() {
           </button>
           <button
             onClick={next}
-            className="group flex items-center gap-2 px-6 py-3 rounded-xl bg-accent text-accent-foreground font-medium text-sm hover:brightness-110 transition-all"
+            disabled={!canContinue}
+            className={cn(
+              "group flex items-center gap-2 px-6 py-3 rounded-xl bg-accent text-accent-foreground font-medium text-sm hover:brightness-110 transition-all",
+              !canContinue && "opacity-50 cursor-not-allowed hover:brightness-100"
+            )}
           >
             {isLast ? "Run scan" : "Continue"}
             {isLast ? (
@@ -241,6 +370,84 @@ function SelectInput({
           )}
         </button>
       ))}
+    </div>
+  );
+}
+
+/**
+ * Framework input.
+ *
+ * Renders a detecting state while the API is in flight (so the user
+ * sees what's happening and we don't flash a wrong default), then
+ * switches to the option list with the detected value pre-selected.
+ *
+ * Below the list, we show a small status line:
+ *   - "Detected: Next.js"  → user hasn't changed it
+ *   - "Overriding detected value" → user picked something else
+ *   - (nothing)            → detection failed and user hasn't picked
+ */
+function FrameworkInput({
+  status,
+  detectedFramework,
+  value,
+  onChange,
+}: {
+  status: "idle" | "detecting" | "detected" | "error";
+  detectedFramework: FrameworkAnswer | null;
+  value: FrameworkAnswer;
+  onChange: (v: FrameworkAnswer) => void;
+}) {
+  if (status === "detecting") {
+    return (
+      <div className="flex items-center gap-3 p-5 rounded-xl border border-border bg-background-elevated/30 text-foreground-muted">
+        <Loader2 className="w-4 h-4 animate-spin text-accent" strokeWidth={2} />
+        <span className="text-sm font-mono">
+          Detecting framework from repo…
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="space-y-2">
+        {FRAMEWORK_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className={cn(
+              "w-full p-5 rounded-xl border text-left transition-all",
+              value === opt.value
+                ? "border-accent bg-accent/5"
+                : "border-border bg-background-elevated/30 hover:border-border-strong hover:bg-background-elevated/50"
+            )}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <span className="font-medium text-foreground">{opt.label}</span>
+              {value === opt.value && (
+                <Check className="w-4 h-4 text-accent" strokeWidth={2.5} />
+              )}
+            </div>
+            <p className="text-sm text-foreground-muted">{opt.description}</p>
+          </button>
+        ))}
+      </div>
+
+      {status === "detected" &&
+        detectedFramework &&
+        detectedFramework !== "unknown" && (
+          <p className="mt-3 text-xs font-mono text-foreground-dim">
+            {value === detectedFramework
+              ? `Detected: ${FRAMEWORK_LABELS[detectedFramework]}`
+              : `Overriding detected value (was ${FRAMEWORK_LABELS[detectedFramework]})`}
+          </p>
+        )}
+
+      {status === "error" && (
+        <p className="mt-3 text-xs font-mono text-foreground-dim">
+          Couldn&apos;t auto-detect — pick the framework that matches your repo.
+        </p>
+      )}
     </div>
   );
 }

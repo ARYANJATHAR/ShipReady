@@ -71,3 +71,5 @@ next-env.d.ts
 .temp/
 .cache/
 .eslintcache
+
+.PLAN-PHASE-3.md

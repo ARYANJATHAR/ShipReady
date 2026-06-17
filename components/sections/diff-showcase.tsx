@@ -175,6 +175,35 @@ const TABS: DiffTab[] = [
   },
 ];
 
+TABS.push({
+  id: "manifest",
+  label: "PWA manifest",
+  filename: "app/manifest.ts",
+  icon: FileCode,
+  description: "Web app manifest so users can install your site as a PWA on their home screen.",
+  beforeAfter: { before: 0, after: 18 },
+  lines: [
+    { type: "meta", text: "@+ new file: 18 lines" },
+    { type: "add", text: "import type { MetadataRoute } from 'next';" },
+    { type: "add", text: "" },
+    { type: "add", text: "export default function manifest(): MetadataRoute.Manifest {" },
+    { type: "add", text: "  return {" },
+    { type: "add", text: "    name: 'MyApp'," },
+    { type: "add", text: "    short_name: 'MyApp'," },
+    { type: "add", text: "    description: 'The fastest way to ship.'," },
+    { type: "add", text: "    start_url: '/'," },
+    { type: "add", text: "    display: 'standalone'," },
+    { type: "add", text: "    theme_color: '#0a0a09'," },
+    { type: "add", text: "    icons: [" },
+    { type: "add", text: "      { src: '/favicon.ico', sizes: 'any' }," },
+    { type: "add", text: "      { src: '/icon-192.png', sizes: '192x192' }," },
+    { type: "add", text: "      { src: '/icon-512.png', sizes: '512x512' }," },
+    { type: "add", text: "    ]," },
+    { type: "add", text: "  };" },
+    { type: "add", text: "}" },
+  ],
+});
+
 export function DiffShowcase() {
   const [active, setActive] = useState(TABS[0].id);
   const tab = TABS.find((t) => t.id === active)!;

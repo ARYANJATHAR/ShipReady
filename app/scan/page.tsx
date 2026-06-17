@@ -173,7 +173,7 @@ function ScanPageContent() {
 
           <div className="flex items-start justify-between gap-8 flex-wrap">
             <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-border bg-background-elevated/40 mb-4">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-border bg-background-elevated/40 mb-4 flex-wrap">
                 <GithubIcon className="w-3.5 h-3.5" />
                 <span className="text-xs font-mono text-foreground">
                   {scan.repo.owner}/{scan.repo.name}
@@ -181,6 +181,11 @@ function ScanPageContent() {
                 <span className="text-xs font-mono text-foreground-dim">
                   · {scan.repo.fileCount} files
                 </span>
+                {scan.repo.framework !== "unknown" && (
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/20">
+                    {scan.repo.framework}
+                  </span>
+                )}
               </div>
               <h1 className="font-display text-5xl tracking-[-0.02em] leading-[1.05]">
                 {scan.score === 100 ? (

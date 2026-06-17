@@ -22,7 +22,7 @@ const fixes: Fix[] = [
 
 const fakeScan: ScanResult = {
   id: "abc",
-  repo: { owner: "test", name: "vibe-app", defaultBranch: "main", commitSha: "abc123", fileCount: 10 },
+  repo: { owner: "test", name: "vibe-app", defaultBranch: "main", commitSha: "abc123", fileCount: 10, framework: "nextjs", frameworkConfidence: "high" },
   context: { collectsEmails: true, processesPayments: false, servesEuUsers: true, usesCookies: false, businessType: "saas", region: "eu" },
   issues: [],
   score: 50,

@@ -84,6 +84,10 @@ export interface ScanResult {
     defaultBranch: string;
     commitSha: string;
     fileCount: number;
+    /** Detected framework (nextjs, vite, astro, remix, sveltekit, unknown) */
+    framework: import("./framework").Framework;
+    /** Detection confidence: high = config file matched, medium = dir matched */
+    frameworkConfidence: "high" | "medium" | "low";
   };
   /** The context the user provided */
   context: ProjectContext;

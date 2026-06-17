@@ -22,10 +22,28 @@ import { parseRepoUrl, getDefaultBranch, getRepoTree, getFileContent, getFileCon
 import { scanLegal } from "./scanners/legal";
 import { scanSecretsFileNames, scanSecretsInContent } from "./scanners/secrets";
 import { scanLicenseFromTree, detectLicenseFromContent, buildLicenseIssue } from "./scanners/license";
+import { scanSeo } from "./scanners/seo";
+import { scanErrors } from "./scanners/errors";
+import { scanSecurity } from "./scanners/security";
+import { scanMeta } from "./scanners/meta";
+import { scanA11y } from "./scanners/a11y";
+import { scanBrokenLinks } from "./scanners/broken-links";
 import { calculateScore, groupByCategory, sortBySeverity } from "./score";
 import { generatePrivacyPolicy } from "./generators/privacy-policy";
 import { generateTerms } from "./generators/terms";
 import { generateCookiePolicy } from "./generators/cookie-policy";
+import { generateSitemap } from "./generators/sitemap";
+import { generateRobots } from "./generators/robots";
+import { generateOgTags } from "./generators/og-tags";
+import { generateJsonLd } from "./generators/jsonld";
+import { generateNotFound, generateErrorPage, generateGlobalError } from "./generators/error-pages";
+import { generateSecurityTxt } from "./generators/security";
+import { generateSecurityHeaders } from "./generators/security-headers";
+import { generateGitignoreAdditions } from "./generators/gitignore-additions";
+import { generateManifest } from "./generators/manifest";
+import { generateFaviconPlaceholder, generateOgImagePlaceholder } from "./generators/image-placeholders";
+import { generateAccessibilityStatement } from "./generators/accessibility-statement";
+import { detectFramework, type Framework, type FrameworkInfo, LABEL as FRAMEWORK_LABEL } from "./framework";
 
 // Re-exports
 export * from "./types";
@@ -34,7 +52,9 @@ export { CONTEXT_QUESTIONS, REGION_QUESTION, buildContext, deriveRules, makeCont
 export { calculateScore, groupByCategory, sortBySeverity } from "./score";
 export { computeDiff } from "./diff";
 export { buildFixesZip } from "./zip";
-export { generatePrivacyPolicy, generateTerms, generateCookiePolicy } from "./generators/index";
+export { generatePrivacyPolicy, generateTerms, generateCookiePolicy, generateSitemap, generateRobots, generateOgTags, generateJsonLd, generateNotFound, generateErrorPage, generateGlobalError, generateSecurityTxt, generateSecurityHeaders, generateGitignoreAdditions, generateManifest, generateFaviconPlaceholder, generateOgImagePlaceholder, generateAccessibilityStatement } from "./generators/index";
+export { detectFramework, frameworkPaths, hasAppRouter } from "./framework";
+export type { Framework, FrameworkInfo } from "./framework";
 
 export interface ScanOptions {
   /** The repo URL or "owner/name" */
@@ -43,6 +63,13 @@ export interface ScanOptions {
   context: ProjectContext;
   /** Optional: project name (defaults to repo name) */
   projectName?: string;
+  /**
+   * Optional: user-confirmed framework. When provided and not "unknown",
+   * this overrides auto-detection. Auto-detection is used as the fallback
+   * for backwards compatibility (e.g. when the scan is triggered from
+   * the public badge endpoint or /report without going through onboarding).
+   */
+  framework?: Framework;
 }
 
 /**
@@ -60,6 +87,16 @@ export async function scanRepo(opts: ScanOptions): Promise<ScanResult> {
   const { owner, name } = parsed;
   const branch = await getDefaultBranch(owner, name);
   const tree = await getRepoTree(owner, name, branch);
+
+  // Detect framework (fast — no API calls)
+  // If the user provided a framework override via onboarding, prefer that.
+  // Auto-detection is still useful for `matchedBy` and as a fallback when
+  // the override is "unknown" (i.e. the user said "not sure").
+  const detected = detectFramework(tree.files);
+  const frameworkInfo: FrameworkInfo =
+    opts.framework && opts.framework !== "unknown"
+      ? { ...detected, framework: opts.framework, label: FRAMEWORK_LABEL[opts.framework], confidence: "high", matchedBy: "user override" }
+      : detected;
 
   // Run scanners in parallel
   const legal = scanLegal(tree.files);
@@ -97,12 +134,31 @@ export async function scanRepo(opts: ScanOptions): Promise<ScanResult> {
     }
   }
 
+  // SEO scanner (depends on framework + layout file contents)
+  const seo = scanSeo({ files: tree.files, contents, framework: frameworkInfo.framework });
+  // Errors scanner
+  const errors = scanErrors({ files: tree.files, framework: frameworkInfo.framework });
+  // Security scanner
+  const security = scanSecurity({ files: tree.files, contents, framework: frameworkInfo.framework });
+  // Meta scanner
+  const meta = scanMeta({ files: tree.files, framework: frameworkInfo.framework });
+  // A11y scanner (no auto-fix — just flag issues)
+  const a11y = scanA11y({ contents, framework: frameworkInfo.framework });
+  // Broken links scanner (no auto-fix — just flag issues)
+  const brokenLinks = scanBrokenLinks({ files: tree.files, contents, maxFiles: 20 });
+
   // Combine all issues
   const allIssues: Issue[] = [
     ...legal.issues,
     ...secrets.issues,
     ...contentIssues,
     licenseIssue,
+    ...seo,
+    ...errors,
+    ...security,
+    ...meta,
+    ...a11y,
+    ...brokenLinks,
   ];
 
   // Sort and score
@@ -117,6 +173,8 @@ export async function scanRepo(opts: ScanOptions): Promise<ScanResult> {
       defaultBranch: branch,
       commitSha: tree.commitSha,
       fileCount: tree.files.filter((f) => f.type === "file").length,
+      framework: frameworkInfo.framework,
+      frameworkConfidence: frameworkInfo.confidence,
     },
     context: opts.context,
     issues: sorted,
@@ -130,6 +188,12 @@ export interface GenerateFixesOptions {
   scan: ScanResult;
   projectName?: string;
   contactEmail?: string;
+  /** Site URL (e.g. https://myapp.com) — used by SEO generators */
+  siteUrl?: string;
+  /** Short description of the project — used by OG/JSON-LD generators */
+  description?: string;
+  /** Optional Twitter handle */
+  twitterHandle?: string;
 }
 
 /**
@@ -201,6 +265,225 @@ export function generateFixes(opts: GenerateFixesOptions): Fix[] {
         isNew: true,
       });
     }
+
+    // SEO fixes
+    if (issue.id === "missing-sitemap") {
+      const siteUrl = opts.siteUrl || `https://${scan.repo.name.toLowerCase()}.com`;
+      const { path, content } = generateSitemap({
+        framework: scan.repo.framework,
+        siteUrl,
+        projectName,
+      });
+      fixes.push({
+        path,
+        content,
+        description: "Sitemap — submit to Google Search Console after deploying",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    if (issue.id === "missing-robots-txt") {
+      const siteUrl = opts.siteUrl || `https://${scan.repo.name.toLowerCase()}.com`;
+      const { path, content } = generateRobots({
+        framework: scan.repo.framework,
+        siteUrl,
+      });
+      fixes.push({
+        path,
+        content,
+        description: "robots.txt — controls which URLs search engines can crawl",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    if (issue.id === "missing-og-tags" || issue.id === "missing-meta-description" || issue.id === "missing-canonical") {
+      const siteUrl = opts.siteUrl || `https://${scan.repo.name.toLowerCase()}.com`;
+      const description = opts.description || `${projectName} — a modern web app built with care.`;
+      const { path, content } = generateOgTags({
+        framework: scan.repo.framework,
+        projectName,
+        description,
+        siteUrl,
+        twitterHandle: opts.twitterHandle,
+      });
+      fixes.push({
+        path,
+        content,
+        description: "Open Graph + meta tags for social sharing and SEO",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    if (issue.id === "missing-not-found") {
+      const { path, content } = generateNotFound({ projectName });
+      fixes.push({
+        path,
+        content,
+        description: "Custom 404 page — keeps users on your site with helpful links",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    if (issue.id === "missing-error-page") {
+      const { path, content } = generateErrorPage({ projectName });
+      fixes.push({
+        path,
+        content,
+        description: "Error boundary — catches unhandled exceptions in route segments",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    // A11y statement — generated once if ANY a11y issue is missing
+    if (issue.id === "missing-html-lang" || issue.id === "images-without-alt" || issue.id === "buttons-without-label" || issue.id === "inputs-without-label") {
+      const alreadyAdded = fixes.some((f) => f.path === "ACCESSIBILITY.md");
+      if (!alreadyAdded) {
+        const { path, content } = generateAccessibilityStatement({
+          projectName,
+          contactEmail,
+        });
+        fixes.push({
+          path,
+          content,
+          description: "Accessibility statement — public commitment to WCAG conformance",
+          issueId: issue.id,
+          isNew: true,
+        });
+      }
+    }
+
+    if (issue.id === "missing-manifest") {
+      const { path, content } = generateManifest({
+        framework: scan.repo.framework,
+        projectName,
+        description: opts.description || `${projectName} — a modern web app.`,
+      });
+      fixes.push({
+        path,
+        content,
+        description: "Web app manifest — makes your site installable as a PWA",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    if (issue.id === "missing-favicon") {
+      const { path, content } = generateFaviconPlaceholder({
+        projectName,
+        framework: scan.repo.framework,
+      });
+      fixes.push({
+        path,
+        content,
+        description: "Favicon instructions — ShipReady can't generate images, but tells you how",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    if (issue.id === "missing-og-image") {
+      const { path, content } = generateOgImagePlaceholder({
+        projectName,
+        framework: scan.repo.framework,
+      });
+      fixes.push({
+        path,
+        content,
+        description: "OG image instructions — 1200x630 image for social shares",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    if (issue.id === "missing-security-txt") {
+      const { path, content } = generateSecurityTxt({
+        projectName,
+        contactEmail,
+      });
+      fixes.push({
+        path,
+        content,
+        description: "security.txt — how security researchers contact you (RFC 9116)",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    if (
+      issue.id === "missing-csp" ||
+      issue.id === "missing-hsts" ||
+      issue.id === "missing-x-frame-options" ||
+      issue.id === "missing-referrer-policy" ||
+      issue.id === "missing-permissions-policy" ||
+      issue.id === "missing-x-content-type-options"
+    ) {
+      // We only generate the full headers block once, even if multiple are missing
+      const alreadyAdded = fixes.some((f) => f.path === "next.config.headers.ts" || f.path === "vercel.headers.json");
+      if (!alreadyAdded) {
+        const { path, content } = generateSecurityHeaders({
+          framework: scan.repo.framework,
+          usesPayments: ctx.processesPayments,
+        });
+        fixes.push({
+          path,
+          content,
+          description: "Security headers — CSP, HSTS, X-Frame-Options, etc. (merge into your config)",
+          issueId: issue.id,
+          isNew: true,
+        });
+      }
+    }
+
+    if (issue.id === "incomplete-gitignore" || issue.id === "missing-gitignore") {
+      // Parse the missing entries from the issue description (best-effort)
+      const missingMatch = issue.description.match(/missing: ([^.]+)/);
+      const missing = missingMatch
+        ? missingMatch[1].split(",").map((s) => s.trim())
+        : [".env", "node_modules", ".next", "dist", "build"];
+      const { path, content } = generateGitignoreAdditions({ missing });
+      fixes.push({
+        path,
+        content,
+        description: ".gitignore additions — append these to your existing .gitignore",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    if (issue.id === "missing-global-error") {
+      const { path, content } = generateGlobalError({ projectName });
+      fixes.push({
+        path,
+        content,
+        description: "Global error handler — last line of defense for root layout errors",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
+
+    if (issue.id === "missing-jsonld") {
+      const siteUrl = opts.siteUrl || `https://${scan.repo.name.toLowerCase()}.com`;
+      const description = opts.description || `${projectName} — a modern web app built with care.`;
+      const { path, content } = generateJsonLd({
+        framework: scan.repo.framework,
+        projectName,
+        description,
+        siteUrl,
+        contactEmail,
+      });
+      fixes.push({
+        path,
+        content,
+        description: "JSON-LD Organization schema for Google rich results",
+        issueId: issue.id,
+        isNew: true,
+      });
+    }
   }
 
   return fixes;
@@ -224,6 +507,10 @@ function pickFilesToInspect(files: RepoFile[]): string[] {
     if (/^(package\.json|\.env|\.env\.example|next\.config\.|nuxt\.config\.|vite\.config\.|astro\.config\.|svelte\.config\.|remix\.config\.|tsconfig\.json|tailwind\.config\.)/.test(path)) {
       return true;
     }
+    // App router files (Next.js / Remix) - SEO, Meta, Errors depend on layout
+    if (/^app\/(layout|root|page|sitemap|robots|manifest|error|not-found|global-error)\.(tsx?|jsx?)$/i.test(path)) return true;
+    // Static HTML
+    if (/^(public\/)?index\.html$/i.test(path)) return true;
     // Files in public/ folder
     if (path.startsWith("public/")) return true;
     // README and similar
