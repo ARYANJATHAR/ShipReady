@@ -56,13 +56,13 @@ console.log("Total issues:", all.length);
 console.log("Score:", calculateScore(all));
 
 console.log("\n=== PRIVACY POLICY GEN (first 30 lines) ===");
-const policy = generatePrivacyPolicy({ context, projectName: "TestApp", contactEmail: "hello@testapp.com" });
+const policy = await generatePrivacyPolicy({ context, projectName: "TestApp", contactEmail: "hello@testapp.com" });
 console.log(policy.split("\n").slice(0, 30).join("\n"));
 console.log("...");
 console.log(`(${policy.split("\n").length} lines total)`);
 
 console.log("\n=== TERMS GEN (first 20 lines) ===");
-const terms = generateTerms({ context, projectName: "TestApp", contactEmail: "hello@testapp.com" });
+const terms = await generateTerms({ context, projectName: "TestApp", contactEmail: "hello@testapp.com" });
 console.log(terms.split("\n").slice(0, 20).join("\n"));
 console.log("...");
 console.log(`(${terms.split("\n").length} lines total)`);

@@ -1,18 +1,49 @@
 /**
  * Cookie policy generator.
+ *
+ * Two paths:
+ *   1. AI path (when `codebase` is provided and AI is enabled)
+ *   2. Static path (default)
+ *
  * Only generated when context.usesCookies is true.
  */
 
-import type { ProjectContext } from "../context";
+import type { ProjectContext, CodebaseContext } from "../types";
+import { generateCookiePolicyWithAI } from "./_ai-prompts";
+import { aiEnabled } from "@/lib/ai";
 
 export interface CookiePolicyInput {
   context: ProjectContext;
   projectName: string;
   contactEmail: string;
   effectiveDate?: string;
+  /** Optional: AI-curated codebase context. */
+  codebase?: CodebaseContext;
 }
 
-export function generateCookiePolicy(input: CookiePolicyInput): string {
+export async function generateCookiePolicy(input: CookiePolicyInput): Promise<string> {
+  // AI path
+  if (input.codebase && aiEnabled) {
+    const aiResult = await generateCookiePolicyWithAI({
+      projectName: input.projectName,
+      contactEmail: input.contactEmail,
+      projectContext: input.context,
+      codebase: input.codebase,
+      effectiveDate: input.effectiveDate,
+    });
+    if (aiResult.ok) {
+      return aiResult.text;
+    }
+    // Fall through to static
+  }
+
+  return generateCookiePolicyStatic(input);
+}
+
+/**
+ * Static (non-AI) cookie policy generator.
+ */
+export function generateCookiePolicyStatic(input: CookiePolicyInput): string {
   const ctx = input.context;
   const date = input.effectiveDate || new Date().toISOString().slice(0, 10);
 

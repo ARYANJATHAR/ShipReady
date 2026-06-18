@@ -1,23 +1,22 @@
 /**
  * Privacy policy generator.
  *
- * Produces a context-aware privacy policy in Markdown.
- * The content is driven by the user's ProjectContext — the 5 answers
- * determine which sections are included, what frameworks are referenced,
- * and what disclosures are made.
+ * Two paths:
+ *   1. AI path (when `codebase` is provided and AI is enabled):
+ *      - Drafts a policy tailored to the actual repo via `generatePrivacyPolicyWithAI`
+ *      - Falls back to the static template below on any failure
+ *   2. Static path (always works, no AI required):
+ *      - Heavily-adapted CC0 template, modified to skip irrelevant sections
+ *      - Context-aware via `ProjectContext` (5 onboarding answers)
  *
- * The text is a heavily-adapted version of a CC0 template, modified to:
- *   - Skip irrelevant sections (e.g. payment processor if no payments)
- *   - Use correct legal framework names based on region
- *   - Use business-type appropriate language
- *   - Include "not legal advice" disclaimer
- *
- * This is NOT a substitute for legal review. For high-risk businesses
- * (healthcare, finance, kids' products), always pay a lawyer.
+ * The text is NOT legal advice. For high-risk businesses (healthcare, finance,
+ * kids' products), always pay a lawyer.
  */
 
-import type { ProjectContext, PolicyRules } from "../context";
+import type { ProjectContext, CodebaseContext } from "../types";
 import { deriveRules } from "../context";
+import { generatePrivacyPolicyWithAI } from "./_ai-prompts";
+import { aiEnabled } from "@/lib/ai";
 
 export interface PrivacyPolicyInput {
   context: ProjectContext;
@@ -29,9 +28,37 @@ export interface PrivacyPolicyInput {
   effectiveDate?: string;
   /** Where the data is hosted (e.g. "United States", "EU") */
   dataHosting?: string;
+  /** Optional: AI-curated codebase context. When provided AND AI is enabled,
+   *  we'll try to draft a policy tailored to the actual repo. */
+  codebase?: CodebaseContext;
 }
 
-export function generatePrivacyPolicy(input: PrivacyPolicyInput): string {
+export async function generatePrivacyPolicy(input: PrivacyPolicyInput): Promise<string> {
+  // AI path: only if we have a codebase context AND AI is enabled
+  if (input.codebase && aiEnabled) {
+    const aiResult = await generatePrivacyPolicyWithAI({
+      projectName: input.projectName,
+      contactEmail: input.contactEmail,
+      description: input.codebase.description,
+      projectContext: input.context,
+      codebase: input.codebase,
+      effectiveDate: input.effectiveDate,
+    });
+    if (aiResult.ok) {
+      return aiResult.text;
+    }
+    // Fall through to static on any AI failure
+  }
+
+  return generatePrivacyPolicyStatic(input);
+}
+
+/**
+ * Static (non-AI) privacy policy generator. Always works, no external calls.
+ * Heavily-adapted CC0 template, modified to skip irrelevant sections based
+ * on the user's ProjectContext.
+ */
+export function generatePrivacyPolicyStatic(input: PrivacyPolicyInput): string {
   const ctx = input.context;
   const rules = deriveRules(ctx);
   const date = input.effectiveDate || new Date().toISOString().slice(0, 10);

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateFixes, buildFixesZip, type ScanResult } from "@/engine/src";
+import { buildCodebaseContext } from "@/engine/src/codebase-context";
+import { aiEnabled } from "@/lib/ai";
 
 export const runtime = "nodejs";
+// AI generation adds 5-10s for the codebase fetch + 30-60s for the AI calls
+// (3 policy calls). Allow 240s so the ZIP can finish even on slow models.
+export const maxDuration = 240;
 
 /**
  * POST /api/generate
@@ -9,16 +14,26 @@ export const runtime = "nodejs";
  * Body: {
  *   scan: ScanResult,
  *   projectName?: string,
- *   contactEmail?: string
+ *   contactEmail?: string,
+ *   repoUrl?: string  // required for AI mode so we can build codebase context
  * }
  *
  * Returns: a ZIP file containing all generated fixes
+ *
+ * AI behavior:
+ *   - If `aiEnabled` (env var set) AND `repoUrl` is provided, the route
+ *     builds a `CodebaseContext` from the repo and passes it into
+ *     `generateFixes`. The policy generators will use the AI path.
+ *   - Without `aiEnabled` or `repoUrl`, all generators use static templates.
+ *   - The codebase fetch is cached (24h) so subsequent scans of the same
+ *     repo are fast.
  */
 export async function POST(req: NextRequest) {
   let body: {
     scan?: ScanResult;
     projectName?: string;
     contactEmail?: string;
+    repoUrl?: string;
   };
   try {
     body = await req.json();
@@ -31,10 +46,25 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const fixes = generateFixes({
+    // Build the codebase context when AI is on and we have a repo URL.
+    // This is what the policy generators use to draft repo-tailored docs.
+    let codebase = undefined;
+    if (aiEnabled && body.repoUrl) {
+      try {
+        codebase = await buildCodebaseContext(body.repoUrl);
+      } catch (err) {
+        // Codebase fetch failed — log it but don't block the ZIP. The
+        // generators will fall back to static templates.
+        const message = err instanceof Error ? err.message : "unknown";
+        console.warn("[/api/generate] codebase context failed, falling back to static:", message);
+      }
+    }
+
+    const fixes = await generateFixes({
       scan: body.scan,
       projectName: body.projectName,
       contactEmail: body.contactEmail,
+      codebase,
     });
 
     if (fixes.length === 0) {

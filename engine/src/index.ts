@@ -17,6 +17,7 @@ import type {
   Fix,
   ProjectContext,
   RepoFile,
+  CodebaseContext,
 } from "./types";
 import { parseRepoUrl, getDefaultBranch, getRepoTree, getFileContent, getFileContents } from "./github";
 import { scanLegal } from "./scanners/legal";
@@ -44,6 +45,7 @@ import { generateManifest } from "./generators/manifest";
 import { generateFaviconPlaceholder, generateOgImagePlaceholder } from "./generators/image-placeholders";
 import { generateAccessibilityStatement } from "./generators/accessibility-statement";
 import { detectFramework, type Framework, type FrameworkInfo, LABEL as FRAMEWORK_LABEL } from "./framework";
+import { aiEnabled } from "@/lib/ai";
 
 // Re-exports
 export * from "./types";
@@ -52,9 +54,11 @@ export { CONTEXT_QUESTIONS, REGION_QUESTION, buildContext, deriveRules, makeCont
 export { calculateScore, groupByCategory, sortBySeverity } from "./score";
 export { computeDiff } from "./diff";
 export { buildFixesZip } from "./zip";
-export { generatePrivacyPolicy, generateTerms, generateCookiePolicy, generateSitemap, generateRobots, generateOgTags, generateJsonLd, generateNotFound, generateErrorPage, generateGlobalError, generateSecurityTxt, generateSecurityHeaders, generateGitignoreAdditions, generateManifest, generateFaviconPlaceholder, generateOgImagePlaceholder, generateAccessibilityStatement } from "./generators/index";
+export { generatePrivacyPolicy, generatePrivacyPolicyStatic, generateTerms, generateTermsStatic, generateCookiePolicy, generateCookiePolicyStatic, generateSitemap, generateRobots, generateOgTags, generateJsonLd, generateNotFound, generateErrorPage, generateGlobalError, generateSecurityTxt, generateSecurityHeaders, generateGitignoreAdditions, generateManifest, generateFaviconPlaceholder, generateOgImagePlaceholder, generateAccessibilityStatement } from "./generators/index";
 export { detectFramework, frameworkPaths, hasAppRouter } from "./framework";
 export type { Framework, FrameworkInfo } from "./framework";
+export { buildCodebaseContext } from "./codebase-context";
+export type { CodebaseContext } from "./types";
 
 export interface ScanOptions {
   /** The repo URL or "owner/name" */
@@ -181,6 +185,7 @@ export async function scanRepo(opts: ScanOptions): Promise<ScanResult> {
     score,
     scannedAt: new Date().toISOString(),
     durationMs: Date.now() - start,
+    aiEnabled,
   };
 }
 
@@ -194,6 +199,10 @@ export interface GenerateFixesOptions {
   description?: string;
   /** Optional Twitter handle */
   twitterHandle?: string;
+  /** Optional: AI-curated codebase context. When provided (and AI is enabled),
+   *  the policy generators will use it to draft a tailored document instead
+   *  of the static template. */
+  codebase?: CodebaseContext;
 }
 
 /**
@@ -201,9 +210,14 @@ export interface GenerateFixesOptions {
  * Only generates fixes for issues that are "missing" or "warning" — skips
  * items that are already present.
  *
+ * Async because the policy generators (privacy/terms/cookies) may call the
+ * LLM when a codebase context is provided and AI is enabled. Non-AI fixes
+ * (SEO, error pages, license, etc.) remain effectively synchronous; we use
+ * `await` uniformly so callers don't need to reason about which path is hot.
+ *
  * Returns a list of Fix objects with file paths and contents.
  */
-export function generateFixes(opts: GenerateFixesOptions): Fix[] {
+export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> {
   const scan = opts.scan;
   const ctx = scan.context;
   const projectName = opts.projectName || scan.repo.name;
@@ -214,32 +228,59 @@ export function generateFixes(opts: GenerateFixesOptions): Fix[] {
     if (issue.status === "present") continue;
 
     if (issue.id === "missing-privacy-policy") {
+      const content = await generatePrivacyPolicy({
+        context: ctx,
+        projectName,
+        contactEmail,
+        codebase: opts.codebase,
+      });
       fixes.push({
         path: "PRIVACY.md",
-        content: generatePrivacyPolicy({ context: ctx, projectName, contactEmail }),
-        description: "Privacy policy tailored to your business type and jurisdiction",
+        content,
+        description: opts.codebase
+          ? "Privacy policy tailored to your repo (AI-generated)"
+          : "Privacy policy tailored to your business type and jurisdiction",
         issueId: issue.id,
         isNew: true,
+        generationMode: opts.codebase && aiEnabled ? "ai" : "static",
       });
     }
 
     if (issue.id === "missing-terms") {
+      const content = await generateTerms({
+        context: ctx,
+        projectName,
+        contactEmail,
+        codebase: opts.codebase,
+      });
       fixes.push({
         path: "TERMS.md",
-        content: generateTerms({ context: ctx, projectName, contactEmail }),
-        description: "Terms of service with payment, IP, and liability clauses",
+        content,
+        description: opts.codebase
+          ? "Terms of service tailored to your repo (AI-generated)"
+          : "Terms of service with payment, IP, and liability clauses",
         issueId: issue.id,
         isNew: true,
+        generationMode: opts.codebase && aiEnabled ? "ai" : "static",
       });
     }
 
     if (issue.id === "missing-cookie-policy" && ctx.usesCookies) {
+      const content = await generateCookiePolicy({
+        context: ctx,
+        projectName,
+        contactEmail,
+        codebase: opts.codebase,
+      });
       fixes.push({
         path: "COOKIES.md",
-        content: generateCookiePolicy({ context: ctx, projectName, contactEmail }),
-        description: "Cookie policy with categories and opt-out instructions",
+        content,
+        description: opts.codebase
+          ? "Cookie policy tailored to your repo (AI-generated)"
+          : "Cookie policy with categories and opt-out instructions",
         issueId: issue.id,
         isNew: true,
+        generationMode: opts.codebase && aiEnabled ? "ai" : "static",
       });
     }
 

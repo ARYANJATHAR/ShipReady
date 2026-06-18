@@ -1,11 +1,18 @@
 /**
  * Terms of Service generator.
- * Context-aware based on businessType (SaaS gets subscription language,
- * ecommerce gets shipping/returns).
+ *
+ * Two paths:
+ *   1. AI path (when `codebase` is provided and AI is enabled):
+ *      - Tailors the terms to the actual repo + project context
+ *      - Falls back to the static template on any failure
+ *   2. Static path: context-aware based on businessType (SaaS gets
+ *      subscription language, ecommerce gets shipping/returns, etc.)
  */
 
-import type { ProjectContext, PolicyRules } from "../context";
+import type { ProjectContext, CodebaseContext } from "../types";
 import { deriveRules } from "../context";
+import { generateTermsWithAI } from "./_ai-prompts";
+import { aiEnabled } from "@/lib/ai";
 
 export interface TermsInput {
   context: ProjectContext;
@@ -13,9 +20,34 @@ export interface TermsInput {
   contactEmail: string;
   effectiveDate?: string;
   governingLaw?: string; // e.g. "the State of California, USA"
+  /** Optional: AI-curated codebase context. */
+  codebase?: CodebaseContext;
 }
 
-export function generateTerms(input: TermsInput): string {
+export async function generateTerms(input: TermsInput): Promise<string> {
+  // AI path
+  if (input.codebase && aiEnabled) {
+    const aiResult = await generateTermsWithAI({
+      projectName: input.projectName,
+      contactEmail: input.contactEmail,
+      description: input.codebase.description,
+      projectContext: input.context,
+      codebase: input.codebase,
+      effectiveDate: input.effectiveDate,
+    });
+    if (aiResult.ok) {
+      return aiResult.text;
+    }
+    // Fall through to static
+  }
+
+  return generateTermsStatic(input);
+}
+
+/**
+ * Static (non-AI) terms generator. Always works, no external calls.
+ */
+export function generateTermsStatic(input: TermsInput): string {
   const ctx = input.context;
   const rules = deriveRules(ctx);
   const date = input.effectiveDate || new Date().toISOString().slice(0, 10);

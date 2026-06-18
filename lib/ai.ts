@@ -52,9 +52,12 @@ export const aiProvider = baseUrlToProvider(baseURL);
 export const ai = new OpenAI({
   apiKey: apiKey || "sk-placeholder-not-used",
   baseURL,
-  // Some gateways want a longer timeout than OpenAI's default
-  timeout: 30_000,
-  maxRetries: 2,
+  // Some gateways (e.g. reasoning models on TokenRouter) take 30-90s per call.
+  // 120s gives headroom for the slowest models without making fast ones
+  // feel slow. We keep maxRetries low (1) because a slow call retrying
+  // stacks up to 4+ minutes, which exceeds the Next.js route limit.
+  timeout: 120_000,
+  maxRetries: 1,
 });
 
 /**
