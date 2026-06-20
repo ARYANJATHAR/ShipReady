@@ -21,7 +21,7 @@ import Link from "next/link";
 import { GithubIcon } from "@/components/social-icons";
 import { cn } from "@/lib/utils";
 import type { ScanResult, Issue, Fix } from "@/engine/src";
-import { sortBySeverity } from "@/engine/src";
+import { sortBySeverity } from "@/engine/src/score";
 
 const CATEGORY_ICONS: Record<string, LucideIcon> = {
   legal: Scale,
