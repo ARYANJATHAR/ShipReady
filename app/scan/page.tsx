@@ -96,7 +96,7 @@ function ScanPageContent() {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scan }),
+        body: JSON.stringify({ scan, repoUrl }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -186,6 +186,14 @@ function ScanPageContent() {
                     {scan.repo.framework}
                   </span>
                 )}
+                {scan.aiEnabled && (
+                  <span
+                    title="AI generation is enabled. Your policies will be tailored to the actual repo."
+                    className="text-xs font-mono px-1.5 py-0.5 rounded bg-gradient-to-r from-accent/20 to-accent/10 text-accent border border-accent/30"
+                  >
+                    AI on
+                  </span>
+                )}
               </div>
               <h1 className="font-display text-5xl tracking-[-0.02em] leading-[1.05]">
                 {scan.score === 100 ? (
@@ -255,7 +263,7 @@ function ScanPageContent() {
               {generating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  Generating...
+                  {scan.aiEnabled ? "Generating with AI..." : "Generating..."}
                 </>
               ) : (
                 <>

@@ -80,37 +80,50 @@ export async function runPrompt(input: RunPromptInput): Promise<RunPromptResult>
     }
   }
 
-  // 2. Live call
-  try {
-    const messages: Array<{ role: "system" | "user"; content: string }> = [];
-    if (input.system) messages.push({ role: "system", content: input.system });
-    messages.push({ role: "user", content: input.user });
+  // 2. Live call (with one retry on empty response — reasoning models
+  //    occasionally return no content; a single retry usually fixes it)
+  let attempt = 0;
+  const maxAttempts = 2;
+  while (attempt < maxAttempts) {
+    attempt++;
+    try {
+      const messages: Array<{ role: "system" | "user"; content: string }> = [];
+      if (input.system) messages.push({ role: "system", content: input.system });
+      messages.push({ role: "user", content: input.user });
 
-    const completion = await ai.chat.completions.create({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    });
+      const completion = await ai.chat.completions.create({
+        model,
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+      });
 
-    const text = completion.choices[0]?.message?.content ?? "";
-    const trimmed = text.trim();
+      const text = completion.choices[0]?.message?.content ?? "";
+      const trimmed = text.trim();
 
-    if (!trimmed) {
-      return { ok: false, error: "empty_response", model };
+      if (!trimmed && attempt < maxAttempts) {
+        // Empty response — retry once before giving up
+        continue;
+      }
+      if (!trimmed) {
+        return { ok: false, error: "empty_response", model };
+      }
+
+      // 3. Cache write
+      if (!input.noCache && key) {
+        cacheSet(key, trimmed);
+      }
+
+      return { ok: true, text: trimmed, cached: false, model };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "unknown_error";
+      // Don't cache failures — the next call might succeed
+      return { ok: false, error: message, model };
     }
-
-    // 3. Cache write
-    if (!input.noCache && key) {
-      cacheSet(key, trimmed);
-    }
-
-    return { ok: true, text: trimmed, cached: false, model };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown_error";
-    // Don't cache failures — the next call might succeed
-    return { ok: false, error: message, model };
   }
+
+  // Shouldn't reach here, but TS wants a return
+  return { ok: false, error: "exhausted_retries", model };
 }
 
 /**

@@ -263,3 +263,4 @@ In `engine/src/types.ts`:
 3. **Brand color inference** — always pick one, or use "no color" (default black) when we can't infer? **Recommendation:** always pick one. Default to a tasteful color derived from the project name hash.
 4. **Font in Satori** — Inter vs Geist vs letting the user upload their own. **Recommendation:** Inter for v1.
 5. **Should the AI scan include a model badge in the report?** "Generated with Claude 3.5 Haiku via OpenRouter". **Recommendation:** yes, add a small "ai" pill in the diff viewer when `generationMode === "ai"`.
+    
