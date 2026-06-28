@@ -20,7 +20,35 @@ import type { Framework } from "../framework";
 
 export interface MetaScanInput {
   files: RepoFile[];
+  /** File contents (path → content) for files we've fetched */
+  contents: Map<string, string | null>;
   framework: Framework;
+}
+
+/**
+ * Try to find layout content across multiple candidate paths.
+ * Uses the same pattern as the SEO scanner for consistency.
+ */
+function getLayoutContent(contents: Map<string, string | null>): string | null {
+  const candidates = [
+    "index.html",
+    "public/index.html",
+    "src/index.html",
+    "app/layout.tsx",
+    "app/layout.jsx",
+    "src/app/layout.tsx",
+    "app/root.tsx",
+    "src/layouts/Layout.astro",
+    "src/App.tsx",
+    "src/App.jsx",
+  ];
+
+  for (const path of candidates) {
+    const content = contents.get(path);
+    if (content) return content;
+  }
+
+  return null;
 }
 
 interface MetaTarget {
@@ -28,8 +56,6 @@ interface MetaTarget {
   title: string;
   description: string;
   paths: string[];
-  /** Whether this applies to all frameworks or just some */
-  frameworkSpecific?: Framework[];
 }
 
 const META_TARGETS: MetaTarget[] = [
@@ -93,22 +119,58 @@ const META_TARGETS: MetaTarget[] = [
   },
 ];
 
+/**
+ * Check if layout content contains a theme-color meta tag.
+ * Matches both HTML `<meta name="theme-color" ...>` and
+ * Next.js `themeColor: "..."` metadata exports.
+ */
+function hasThemeColor(layout: string): boolean {
+  return /theme-color/i.test(layout) ||
+         /themeColor\s*:/i.test(layout);
+}
+
+/**
+ * Check if layout content references an apple-touch-icon.
+ * Matches `<link rel="apple-touch-icon" ...>` in HTML.
+ */
+function hasAppleTouchIconLink(layout: string): boolean {
+  return /rel\s*=\s*["']apple-touch-icon["']/i.test(layout);
+}
+
 export function scanMeta(input: MetaScanInput): Issue[] {
   const issues: Issue[] = [];
   const filePaths = new Set(input.files.filter((f) => f.type === "file").map((f) => f.path));
+  const layout = getLayoutContent(input.contents);
 
   for (const target of META_TARGETS) {
     if (target.id === "missing-theme-color") {
-      // Theme color is in layout content, not a file. The presence check
-      // is too expensive for a tree-only scan — just flag as a soft miss.
-      // (Content-aware checks are in Commit 6 A11y where we have layout content.)
+      // Check layout content for theme-color meta tag
+      const hasTag = layout ? hasThemeColor(layout) : false;
       issues.push({
         id: target.id,
         category: "meta",
-        title: target.title,
+        title: hasTag ? "Theme-color meta tag present" : target.title,
         description: target.description,
         severity: "optional",
-        status: "missing",
+        status: hasTag ? "present" : "missing",
+      });
+      continue;
+    }
+
+    if (target.id === "missing-apple-touch-icon") {
+      // Check file paths first, then fall back to content check
+      const foundFile = target.paths.find((p) => filePaths.has(p));
+      const hasLink = !foundFile && layout ? hasAppleTouchIconLink(layout) : false;
+      issues.push({
+        id: target.id,
+        category: "meta",
+        title: foundFile || hasLink
+          ? `${target.title.replace(/^Missing /, "")} present`
+          : target.title,
+        description: target.description,
+        severity: "optional",
+        status: foundFile || hasLink ? "present" : "missing",
+        existingFile: foundFile,
       });
       continue;
     }
@@ -119,7 +181,7 @@ export function scanMeta(input: MetaScanInput): Issue[] {
       category: "meta",
       title: found ? `${target.title.replace(/^Missing /, "")} present` : target.title,
       description: target.description,
-      severity: found ? "optional" : "optional",
+      severity: "optional",
       status: found ? "present" : "missing",
       existingFile: found,
     });

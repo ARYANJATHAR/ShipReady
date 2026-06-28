@@ -38,6 +38,36 @@ interface SeoTarget {
   check: (input: SeoScanInput) => { status: "present" | "missing" | "warning"; file?: string };
 }
 
+/**
+ * Multiple candidate paths for root layout content.
+ * Scanners use this when the framework's primary rootLayout path
+ * doesn't exist in the fetched contents — common in Vite SPAs where
+ * index.html lives at public/index.html rather than root index.html.
+ */
+function getLayoutContent(contents: Map<string, string | null>, primaryPath: string | null): string | null {
+  if (primaryPath) {
+    const content = contents.get(primaryPath);
+    if (content) return content;
+  }
+
+  // Fallback candidates — try common HTML entry point paths
+  const candidates = [
+    "public/index.html",
+    "index.html",
+    "src/index.html",
+    "src/App.tsx",
+    "src/App.jsx",
+  ];
+
+  for (const path of candidates) {
+    if (path === primaryPath) continue; // already tried
+    const content = contents.get(path);
+    if (content) return content;
+  }
+
+  return null;
+}
+
 const SEO_TARGETS: SeoTarget[] = [
   {
     id: "missing-sitemap",
@@ -75,13 +105,12 @@ const SEO_TARGETS: SeoTarget[] = [
     description:
       "Open Graph tags control how your page appears when shared on Twitter, LinkedIn, Slack, Discord, etc. Without og:title, og:description, and og:image, your shares look like blank cards. The fix is 5 lines of HTML in your root layout.",
     check: ({ contents, framework }) => {
-      const paths = frameworkPaths(framework);
-      const layout = paths.rootLayout ? contents.get(paths.rootLayout) : null;
+      const layout = getLayoutContent(contents, frameworkPaths(framework).rootLayout);
       if (!layout) {
         return { status: "missing" as const };
       }
       const hasOg = /og:(title|description|image)/i.test(layout) ||
-                    /openGraph\s*:/i.test(layout);
+                    /openGraph\s*[:\{]/i.test(layout);
       return hasOg ? { status: "present" as const } : { status: "missing" as const };
     },
   },
@@ -91,8 +120,7 @@ const SEO_TARGETS: SeoTarget[] = [
     description:
       "Twitter (X) uses its own meta tags: twitter:card, twitter:title, twitter:description, twitter:image. Without these, your links get the ugly 'no image' preview when shared on X.",
     check: ({ contents, framework }) => {
-      const paths = frameworkPaths(framework);
-      const layout = paths.rootLayout ? contents.get(paths.rootLayout) : null;
+      const layout = getLayoutContent(contents, frameworkPaths(framework).rootLayout);
       if (!layout) return { status: "missing" as const };
       const hasTwitter = /twitter:card/i.test(layout);
       return hasTwitter ? { status: "present" as const } : { status: "missing" as const };
@@ -121,8 +149,7 @@ const SEO_TARGETS: SeoTarget[] = [
     description:
       "Canonical URLs tell search engines which version of a page is the 'real' one. Without them, you can have duplicate content issues (with/without trailing slash, with/without www, etc.) that hurt your rankings.",
     check: ({ contents, framework }) => {
-      const paths = frameworkPaths(framework);
-      const layout = paths.rootLayout ? contents.get(paths.rootLayout) : null;
+      const layout = getLayoutContent(contents, frameworkPaths(framework).rootLayout);
       if (!layout) return { status: "missing" as const };
       const hasCanonical = /canonical/i.test(layout) ||
                           /alternates\s*:/i.test(layout) ||
@@ -136,8 +163,7 @@ const SEO_TARGETS: SeoTarget[] = [
     description:
       "Meta descriptions show up in search results under your page title. Pages with custom descriptions get ~6% higher CTR than auto-generated ones. The fix is 2 lines in your layout.",
     check: ({ contents, framework }) => {
-      const paths = frameworkPaths(framework);
-      const layout = paths.rootLayout ? contents.get(paths.rootLayout) : null;
+      const layout = getLayoutContent(contents, frameworkPaths(framework).rootLayout);
       if (!layout) return { status: "missing" as const };
       const hasDesc = /description\s*:/i.test(layout) ||
                       /<meta[^>]+name\s*=\s*["']description["']/i.test(layout);

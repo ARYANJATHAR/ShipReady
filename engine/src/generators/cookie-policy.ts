@@ -86,8 +86,7 @@ These cookies enable enhanced functionality and personalization, such as remembe
 Some cookies on our website are set by third-party services we use. These may include:
 
 - **Analytics providers** (e.g., Plausible, Google Analytics): Help us understand usage patterns
-- **Payment processors** (e.g., ${ctx.processesPayments ? "Stripe" : "(none configured)"}): Required to process transactions securely
-- **Embedded content**: Pages may include content from other websites (e.g., YouTube, Twitter), which may set their own cookies
+${ctx.processesPayments ? "- **Payment processors** (e.g., Stripe): Required to process transactions securely\n" : ""}- **Embedded content**: Pages may include content from other websites (e.g., YouTube, Twitter), which may set their own cookies
 
 ## How to Manage Cookies
 

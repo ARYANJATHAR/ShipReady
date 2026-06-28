@@ -145,7 +145,7 @@ export async function scanRepo(opts: ScanOptions): Promise<ScanResult> {
   // Security scanner
   const security = scanSecurity({ files: tree.files, contents, framework: frameworkInfo.framework });
   // Meta scanner
-  const meta = scanMeta({ files: tree.files, framework: frameworkInfo.framework });
+  const meta = scanMeta({ files: tree.files, contents, framework: frameworkInfo.framework });
   // A11y scanner (no auto-fix — just flag issues)
   const a11y = scanA11y({ contents, framework: frameworkInfo.framework });
   // Broken links scanner (no auto-fix — just flag issues)
@@ -314,6 +314,7 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
         framework: scan.repo.framework,
         siteUrl,
         projectName,
+        pages: opts.codebase?.pages,
       });
       fixes.push({
         path,
@@ -329,6 +330,7 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
       const { path, content } = generateRobots({
         framework: scan.repo.framework,
         siteUrl,
+        pages: opts.codebase?.pages,
       });
       fixes.push({
         path,
@@ -359,7 +361,7 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
     }
 
     if (issue.id === "missing-not-found") {
-      const { path, content } = generateNotFound({ projectName });
+      const { path, content } = generateNotFound({ projectName, framework: scan.repo.framework });
       fixes.push({
         path,
         content,
@@ -370,14 +372,16 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
     }
 
     if (issue.id === "missing-error-page") {
-      const { path, content } = generateErrorPage({ projectName });
-      fixes.push({
-        path,
-        content,
-        description: "Error boundary — catches unhandled exceptions in route segments",
-        issueId: issue.id,
-        isNew: true,
-      });
+      const result = generateErrorPage({ projectName, framework: scan.repo.framework });
+      if (result) {
+        fixes.push({
+          path: result.path,
+          content: result.content,
+          description: "Error boundary — catches unhandled exceptions in route segments",
+          issueId: issue.id,
+          isNew: true,
+        });
+      }
     }
 
     // A11y statement — generated once if ANY a11y issue is missing
@@ -464,11 +468,12 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
       issue.id === "missing-x-content-type-options"
     ) {
       // We only generate the full headers block once, even if multiple are missing
-      const alreadyAdded = fixes.some((f) => f.path === "next.config.headers.ts" || f.path === "vercel.headers.json");
+      const alreadyAdded = fixes.some((f) => f.path === "next.config.headers.ts" || f.path === "SECURITY-HEADERS.md");
       if (!alreadyAdded) {
         const { path, content } = generateSecurityHeaders({
           framework: scan.repo.framework,
           usesPayments: ctx.processesPayments,
+          projectName,
         });
         fixes.push({
           path,
@@ -497,14 +502,16 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
     }
 
     if (issue.id === "missing-global-error") {
-      const { path, content } = generateGlobalError({ projectName });
-      fixes.push({
-        path,
-        content,
-        description: "Global error handler — last line of defense for root layout errors",
-        issueId: issue.id,
-        isNew: true,
-      });
+      const result = generateGlobalError({ projectName, framework: scan.repo.framework });
+      if (result) {
+        fixes.push({
+          path: result.path,
+          content: result.content,
+          description: "Global error handler — last line of defense for root layout errors",
+          issueId: issue.id,
+          isNew: true,
+        });
+      }
     }
 
     if (issue.id === "missing-jsonld") {

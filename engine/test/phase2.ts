@@ -33,7 +33,7 @@ console.log(`Framework: ${framework.framework} (confidence: ${framework.confiden
 const seo = scanSeo({ files, contents, framework: framework.framework });
 const errors = scanErrors({ files, framework: framework.framework });
 const security = scanSecurity({ files, contents, framework: framework.framework });
-const meta = scanMeta({ files, framework: framework.framework });
+const meta = scanMeta({ files, contents: new Map(), framework: framework.framework });
 const a11y = scanA11y({ contents, framework: framework.framework });
 const broken = scanBrokenLinks({ files, contents });
 

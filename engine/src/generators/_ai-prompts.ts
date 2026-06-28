@@ -250,7 +250,7 @@ const PRIVACY_POLICY_SYSTEM = `You are a careful legal-writing assistant. You dr
 - Is written in plain English, with short paragraphs and clear section headings.
 - Includes a "not legal advice" disclaimer at the top.
 - Follows the section structure provided.
-- Mentions the actual data practices (e.g. "we use Stripe for payments" only if the context says payments are processed; never hallucinate payment processors).
+- CRITICAL — Payment processing: If 'processesPayments' is false, you MUST NOT mention Stripe, Paddle, or any payment processor by name, and MUST NOT include language about payment processing, billing, subscriptions, invoicing, transaction fees, credit card collection, or refund policies. Write as if payment processing simply does not exist. If 'processesPayments' is true, mention Stripe generically ("we use a third-party payment processor such as Stripe") — never invent a specific processor.
 - Does not include analysis, commentary, or anything outside the policy text itself.
 - Does not start with greetings like "Sure, here is..." — start directly with the policy.
 - IMPORTANT: do NOT include any meta-commentary, thinking, planning, or preambles in your output. Output ONLY the policy text starting with the H1 title. No "Let me draft...", no "The user wants...", no "I'll write...".`;
@@ -301,7 +301,8 @@ ${PRIVACY_POLICY_SECTIONS}
 - Match the tone of the existing README snippet if one is provided
 - Keep the policy to ~1500-2500 words. Concise but complete.
 - Use the exact contact email (${input.contactEmail}) and project name (${input.projectName}) throughout — no placeholders
-- Output ONLY the policy text. No preamble, no explanation, no "Here's your policy" intro.`;
+- Output ONLY the policy text. No preamble, no explanation, no "Here's your policy" intro.
+- CRITICAL: If PROJECT CONTEXT says processesPayments is false, ABSOLUTELY DO NOT mention Stripe, billing, subscriptions, refunds, or payment processing of any kind. The policy must read as if payments are not part of the service.`;
 
   const result = await runPrompt({
     system: PRIVACY_POLICY_SYSTEM,
@@ -333,7 +334,7 @@ const TERMS_SYSTEM = `You are a careful legal-writing assistant. You draft terms
 - Uses the exact contact email and project name provided. Never use placeholders.
 - Is written in plain English, with short paragraphs and clear section headings.
 - Includes a "not legal advice" disclaimer at the top.
-- Includes subscription/billing/refund clauses ONLY if the project processes payments.
+- CRITICAL — Payment processing: If 'processesPayments' is false, you MUST OMIT all subscription, billing, payment, and refund sections entirely. Do NOT mention Stripe, payment processors, transaction fees, pricing tiers, late fees, invoice disputes, or any payment-related language. If 'processesPayments' is true, include standard subscription and refund language (mention Stripe generically, never invent a specific processor).
 - Includes the right governing law for the region (Delaware for US, Ireland for EU, etc.).
 - Does not include analysis, commentary, or anything outside the terms text itself.
 - Does not start with greetings like "Sure, here is..." — start directly with the terms.
@@ -384,7 +385,8 @@ ${TERMS_SECTIONS}
 - Choose the governing law based on the region: US → State of Delaware, EU → Republic of Ireland, UK → England and Wales, CA → Province of Ontario, AU → New South Wales, otherwise → "the jurisdiction in which our company is registered"
 - Keep the terms to ~1200-2000 words. Concise but complete.
 - Use the exact contact email (${input.contactEmail}) and project name (${input.projectName}) throughout — no placeholders
-- Output ONLY the terms text. No preamble, no explanation, no "Here's your terms" intro.`;
+- Output ONLY the terms text. No preamble, no explanation, no "Here's your terms" intro.
+- CRITICAL: If PROJECT CONTEXT says processesPayments is false, ABSOLUTELY DO NOT include any subscription, billing, payment, or refund clauses. Skip those sections entirely. The terms must read as if payments are not part of the service.`;
 
   const result = await runPrompt({
     system: TERMS_SYSTEM,
@@ -417,6 +419,7 @@ const COOKIE_POLICY_SYSTEM = `You are a careful legal-writing assistant. You dra
 - Is written in plain English, with short paragraphs and clear section headings.
 - Includes a "not legal advice" disclaimer at the top.
 - Only describes cookie categories that the project actually uses (strictly necessary, analytics, functionality).
+- CRITICAL — Payment processing: If 'processesPayments' is false, do NOT mention payment processor cookies, Stripe, or any payment-related tracking. Only list cookie categories that actually apply.
 - Mentions specific cookie providers (Google Analytics, Plausible, etc.) only if there's evidence in the codebase. Otherwise, keep it generic.
 - Does not include analysis, commentary, or anything outside the policy text itself.
 - Does not start with greetings like "Sure, here is..." — start directly with the policy.
@@ -455,7 +458,8 @@ OUTPUT REQUIREMENTS:
   6. Contact
 - Keep the policy to ~600-1000 words. Concise but complete.
 - Use the exact contact email (${input.contactEmail}) and project name (${input.projectName}) throughout — no placeholders
-- Output ONLY the policy text. No preamble, no explanation.`;
+- Output ONLY the policy text. No preamble, no explanation.
+- CRITICAL: If PROJECT CONTEXT says processesPayments is false, do NOT mention payment processor cookies, Stripe, or any payment-related tracking in the Third-Party Cookies section.`;
 
   const result = await runPrompt({
     system: COOKIE_POLICY_SYSTEM,
