@@ -42,7 +42,7 @@ import { generateSecurityTxt } from "./generators/security";
 import { generateSecurityHeaders } from "./generators/security-headers";
 import { generateGitignoreAdditions } from "./generators/gitignore-additions";
 import { generateManifest } from "./generators/manifest";
-import { generateFaviconPlaceholder, generateOgImagePlaceholder } from "./generators/image-placeholders";
+import { generateRealImages } from "./generators/images";
 import { generateAccessibilityStatement } from "./generators/accessibility-statement";
 import { detectFramework, type Framework, type FrameworkInfo, LABEL as FRAMEWORK_LABEL } from "./framework";
 import { aiEnabled } from "@/lib/ai";
@@ -54,7 +54,7 @@ export { CONTEXT_QUESTIONS, REGION_QUESTION, buildContext, deriveRules, makeCont
 export { calculateScore, groupByCategory, sortBySeverity } from "./score";
 export { computeDiff } from "./diff";
 export { buildFixesZip } from "./zip";
-export { generatePrivacyPolicy, generatePrivacyPolicyStatic, generateTerms, generateTermsStatic, generateCookiePolicy, generateCookiePolicyStatic, generateSitemap, generateRobots, generateOgTags, generateJsonLd, generateNotFound, generateErrorPage, generateGlobalError, generateSecurityTxt, generateSecurityHeaders, generateGitignoreAdditions, generateManifest, generateFaviconPlaceholder, generateOgImagePlaceholder, generateAccessibilityStatement } from "./generators/index";
+export { generatePrivacyPolicy, generatePrivacyPolicyStatic, generateTerms, generateTermsStatic, generateCookiePolicy, generateCookiePolicyStatic, generateSitemap, generateRobots, generateOgTags, generateJsonLd, generateNotFound, generateErrorPage, generateGlobalError, generateSecurityTxt, generateSecurityHeaders, generateGitignoreAdditions, generateManifest, generateRealImages } from "./generators/index";
 export { detectFramework, frameworkPaths, hasAppRouter } from "./framework";
 export type { Framework, FrameworkInfo } from "./framework";
 export { buildCodebaseContext } from "./codebase-context";
@@ -419,32 +419,25 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
       });
     }
 
-    if (issue.id === "missing-favicon") {
-      const { path, content } = generateFaviconPlaceholder({
+    if (issue.id === "missing-favicon" || issue.id === "missing-og-image") {
+      // Generate all 5 real images when either favicon or OG image is missing
+      const images = await generateRealImages({
         projectName,
-        framework: scan.repo.framework,
+        brandColor: opts.projectName ? undefined : undefined, // Let it derive from name
+        codebase: opts.codebase,
       });
-      fixes.push({
-        path,
-        content,
-        description: "Favicon instructions — ShipReady can't generate images, but tells you how",
-        issueId: issue.id,
-        isNew: true,
-      });
-    }
-
-    if (issue.id === "missing-og-image") {
-      const { path, content } = generateOgImagePlaceholder({
-        projectName,
-        framework: scan.repo.framework,
-      });
-      fixes.push({
-        path,
-        content,
-        description: "OG image instructions — 1200x630 image for social shares",
-        issueId: issue.id,
-        isNew: true,
-      });
+      // Add each generated image as a separate fix
+      for (const img of images) {
+        fixes.push({
+          path: img.path,
+          content: img.content,
+          description: img.description,
+          issueId: issue.id, // reuse the same issue ID
+          isNew: true,
+        });
+      }
+      // Continue to avoid adding the placeholder below
+      continue;
     }
 
     if (issue.id === "missing-security-txt") {
@@ -493,13 +486,8 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
       const missing = missingMatch
         ? missingMatch[1].split(",").map((s) => s.trim())
         : [".env", "node_modules", ".next", "dist", "build"];
-      const { path, content } = generateGitignoreAdditions({ missing });
-      fixes.push({
-        path,
-        content,
-        description: ".gitignore additions — append these to your existing .gitignore",
-        issueId: issue.id,
-        isNew: true,
+      const { path, content } = generateGitignoreAdditions({
+        requested: missing,
       });
     }
 

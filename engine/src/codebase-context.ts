@@ -491,7 +491,9 @@ function inferPages(files: RepoFile[]): string[] {
 }
 
 function normalizeRoute(route: string): string {
-  return route.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+  // Always lowercase routes — web URLs are case-sensitive but
+  // convention is lowercase. This prevents /Capabilities vs /capabilities mismatches.
+  return route.replace(/\/+/g, "/").replace(/\/$/, "").toLowerCase() || "/";
 }
 
 function routeCompare(a: string, b: string): number {

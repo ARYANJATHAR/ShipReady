@@ -22,7 +22,11 @@ export async function buildFixesZip({
   const zip = new JSZip();
 
   for (const fix of fixes) {
-    zip.file(fix.path, fix.content);
+    if (Buffer.isBuffer(fix.content)) {
+      zip.file(fix.path, fix.content, { binary: true });
+    } else {
+      zip.file(fix.path, fix.content);
+    }
   }
 
   if (includeReadme) {

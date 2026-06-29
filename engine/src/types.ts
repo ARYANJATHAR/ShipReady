@@ -61,8 +61,8 @@ export interface Issue {
 export interface Fix {
   /** Path where the file should be written, relative to repo root */
   path: string;
-  /** Full file contents */
-  content: string;
+  /** Full file contents (string for text, Buffer for binary like images) */
+  content: string | Buffer;
   /** Description of what this file does */
   description: string;
   /** The issue this fix resolves */

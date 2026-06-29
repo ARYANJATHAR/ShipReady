@@ -10,7 +10,7 @@ export * from "./security";
 export * from "./security-headers";
 export * from "./gitignore-additions";
 export * from "./manifest";
-export * from "./image-placeholders";
+export * from "./images";
 export * from "./accessibility-statement";
 // AI prompts are internal — keep them out of the public re-exports.
 // Tests can import them directly when needed.

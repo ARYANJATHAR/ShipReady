@@ -40,7 +40,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "${input.projectName}",
     short_name: "${input.projectName}",
-    description: "${input.description.replace(/"/g, '\\"')}",
+    description: "${(input.description || input.codebase?.description || `${input.projectName} — a modern web app.`).replace(/"/g, '\\"')}",
     start_url: "/",
     display: "standalone",
     background_color: "${bg}",
