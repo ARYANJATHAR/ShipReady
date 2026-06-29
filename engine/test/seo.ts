@@ -73,13 +73,13 @@ const viteRobots = generateRobots({ framework: "vite", siteUrl: "https://myapp.c
 console.log(`Path: ${viteRobots.path}`);
 
 console.log("\n=== OG TAGS GEN (Next.js) ===");
-const og = generateOgTags({ framework: "nextjs", projectName: "MyApp", description: "The best app", siteUrl: "https://myapp.com" });
+const og = await generateOgTags({ framework: "nextjs", projectName: "MyApp", description: "The best app", siteUrl: "https://myapp.com" });
 console.log(`Path: ${og.path}`);
 console.log(`Has openGraph:`, og.content.includes("openGraph"));
 console.log(`Has twitter:`, og.content.includes("twitter:"));
 
 console.log("\n=== JSON-LD GEN ===");
-const jsonld = generateJsonLd({ framework: "nextjs", projectName: "MyApp", description: "The best app", siteUrl: "https://myapp.com" });
+const jsonld = await generateJsonLd({ framework: "nextjs", projectName: "MyApp", description: "The best app", siteUrl: "https://myapp.com" });
 console.log(`Path: ${jsonld.path}`);
 console.log(`Has @context:`, jsonld.content.includes('"@context"'));
 console.log(`Has schema.org:`, jsonld.content.includes("schema.org"));

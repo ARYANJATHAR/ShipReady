@@ -8,19 +8,54 @@
 
 import type { Framework } from "../framework";
 import { frameworkPaths } from "../framework";
+import { generateOgDescriptionWithAI } from "./_ai-prompts";
+import { aiEnabled } from "@/lib/ai";
+import type { CodebaseContext } from "../types";
 
 export interface OgTagsInput {
   framework: Framework;
   projectName: string;
-  description: string;
+  /** Description of the project. If not provided and no AI, a fallback is used. */
+  description?: string;
   siteUrl: string;
-  /** Optional Twitter handle */
+  /** Optional: Twitter handle to include in meta tags */
   twitterHandle?: string;
+  /** Optional: AI-curated codebase context for description extraction and Twitter handle inference */
+  codebase?: CodebaseContext;
 }
 
-export function generateOgTags(input: OgTagsInput): { path: string; content: string } {
+export async function generateOgTags(input: OgTagsInput): Promise<{ path: string; content: string }> {
+  // Infer or generate the best description
+  let description = input.description || "";
+
+  // AI path: try to extract a punchier description from README
+  if (input.codebase && aiEnabled && (!description || description.length < 20)) {
+    const aiResult = await generateOgDescriptionWithAI({
+      projectName: input.projectName,
+      description: input.codebase.description || description || `${input.projectName} — a modern web app.`,
+      readmeSnippet: input.codebase.existingCopy.readmeSnippet,
+    });
+    if (aiResult.ok) {
+      description = aiResult.text;
+    }
+  }
+
+  // Fallback if no AI or AI failed
+  if (!description || description.length < 10) {
+    description = `${input.projectName} — a modern web app built with care.`;
+  }
+
+  // Infer twitterHandle from codebase if not provided
+  let twitterHandle = input.twitterHandle || "";
+  if (!twitterHandle && input.codebase?.existingCopy.readmeSnippet) {
+    const match = input.codebase.existingCopy.readmeSnippet.match(/twitter\.com\/(\/\w+)|@(\w+)/i);
+    if (match) {
+      twitterHandle = match[1] || match[2] || "";
+    }
+  }
+
   const paths = frameworkPaths(input.framework);
-  const desc = input.description.replace(/"/g, '\\"');
+  const desc = description.replace(/"/g, '\\"');
   const url = input.siteUrl.replace(/\/$/, "");
 
   // Next.js / Remix — generate `app/layout.metadata.ts` for the user to import
@@ -64,7 +99,7 @@ export const metadata: Metadata = {
     title: "${input.projectName}",
     description: "${desc}",
     images: ["/opengraph-image"],
-    ${input.twitterHandle ? `creator: "${input.twitterHandle}",` : ""}
+    ${twitterHandle ? `creator: "${twitterHandle}",` : ""}
   },
   alternates: {
     canonical: "${url}",
@@ -96,7 +131,7 @@ export const metadata: Metadata = {
 <meta name="twitter:title" content="${input.projectName}" />
 <meta name="twitter:description" content="${desc}" />
 <meta name="twitter:image" content="${url}/og-image.png" />
-${input.twitterHandle ? `<meta name="twitter:creator" content="${input.twitterHandle}" />` : ""}
+${twitterHandle ? `<meta name="twitter:creator" content="${twitterHandle}" />` : ""}
 
 <!-- Canonical -->
 <link rel="canonical" href="${url}" />

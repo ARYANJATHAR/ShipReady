@@ -342,14 +342,15 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
     }
 
     if (issue.id === "missing-og-tags" || issue.id === "missing-meta-description" || issue.id === "missing-canonical") {
-      const siteUrl = opts.siteUrl || `https://${scan.repo.name.toLowerCase()}.com`;
-      const description = opts.description || `${projectName} — a modern web app built with care.`;
-      const { path, content } = generateOgTags({
+      const siteUrl = opts.siteUrl || opts.codebase?.siteUrl || `https://${scan.repo.name.toLowerCase()}.com`;
+      const description = opts.description || opts.codebase?.description || `${projectName} — a modern web app built with care.`;
+      const { path, content } = await generateOgTags({
         framework: scan.repo.framework,
         projectName,
         description,
         siteUrl,
         twitterHandle: opts.twitterHandle,
+        codebase: opts.codebase,
       });
       fixes.push({
         path,
@@ -406,7 +407,8 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
       const { path, content } = generateManifest({
         framework: scan.repo.framework,
         projectName,
-        description: opts.description || `${projectName} — a modern web app.`,
+        description: opts.description || opts.codebase?.description || `${projectName} — a modern web app.`,
+        codebase: opts.codebase,
       });
       fixes.push({
         path,
@@ -515,14 +517,15 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
     }
 
     if (issue.id === "missing-jsonld") {
-      const siteUrl = opts.siteUrl || `https://${scan.repo.name.toLowerCase()}.com`;
-      const description = opts.description || `${projectName} — a modern web app built with care.`;
-      const { path, content } = generateJsonLd({
+      const siteUrl = opts.siteUrl || opts.codebase?.siteUrl || `https://${scan.repo.name.toLowerCase()}.com`;
+      const description = opts.description || opts.codebase?.description || `${projectName} — a modern web app built with care.`;
+      const { path, content } = await generateJsonLd({
         framework: scan.repo.framework,
         projectName,
         description,
         siteUrl,
         contactEmail,
+        codebase: opts.codebase,
       });
       fixes.push({
         path,

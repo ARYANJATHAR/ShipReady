@@ -492,3 +492,117 @@ OUTPUT REQUIREMENTS:
 
   return { ok: true, text: cleaned, model: result.model };
 }
+
+// ============================================================================
+// SEO / Meta generation
+// ============================================================================
+
+const OG_DESCRIPTION_SYSTEM = `You are a marketing copywriter. You write punchy, compelling one-line descriptions for websites based on their README and codebase. You output ONLY the description text — no preamble, no quotes, no explanation. Keep it under 160 characters (the OG description limit).`;
+
+export async function generateOgDescriptionWithAI(input: {
+  projectName: string;
+  description: string;
+  readmeSnippet: string;
+}): Promise<{ ok: true; text: string; model: string } | { ok: false; reason: string; model: string }> {
+  if (!aiEnabled) return { ok: false, reason: "ai_disabled", model: defaultModel };
+
+  const userPrompt = `Write a punchy one-line Open Graph description for a website.
+
+Project name: ${input.projectName}
+Existing description: ${input.description}
+README snippet:
+"""
+${input.readmeSnippet}
+"""
+
+Requirements:
+- Maximum 160 characters
+- Compelling and descriptive
+- Written in plain English
+- Output ONLY the description text (no quotes, no preamble)`;
+
+  const result = await runPrompt({
+    system: OG_DESCRIPTION_SYSTEM,
+    user: userPrompt,
+    temperature: 0.4,
+    maxTokens: 200,
+  });
+
+  if (!result.ok) {
+    return { ok: false, reason: result.error, model: result.model };
+  }
+
+  const cleaned = result.text.trim().replace(/^[\"']|[\"']$/g, "");
+  if (cleaned.length < 10 || cleaned.length > 200) {
+    return { ok: false, reason: "invalid_length", model: result.model };
+  }
+
+  return { ok: true, text: cleaned, model: result.model };
+}
+
+const JSONLD_SYSTEM = `You are a technical SEO specialist. You write JSON-LD structured data schemas. You output ONLY valid JSON — no markdown, no explanation, no preamble.`;
+
+export async function generateJsonLdSchemaWithAI(input: {
+  projectName: string;
+  description: string;
+  siteUrl: string;
+  readmeSnippet: string;
+  contactEmail?: string;
+}): Promise<{ ok: true; schema: Record<string, unknown>; model: string } | { ok: false; reason: string; model: string; raw?: string }> {
+  if (!aiEnabled) return { ok: false, reason: "ai_disabled", model: defaultModel };
+
+  const emailLine = input.contactEmail ? `\\n- Contact email: ${input.contactEmail}` : "";
+
+  const userPrompt = `Generate a JSON-LD Organization schema for the following project.
+
+Project name: ${input.projectName}
+Description: ${input.description}
+Site URL: ${input.siteUrl}
+README snippet:
+"""
+${input.readmeSnippet}
+"""
+${emailLine}
+
+Output a valid JSON-LD Organization schema with these fields:
+- @context: "https://schema.org"
+- @type: "Organization"
+- name (the project name)
+- url (the site URL)
+- description (1-2 sentences)
+- logo (use "${input.siteUrl}/logo.png")
+${input.contactEmail ? `- email: "${input.contactEmail}"` : ""}
+
+Output ONLY valid JSON. No markdown, no explanation.`;
+
+  const result = await runPrompt({
+    system: JSONLD_SYSTEM,
+    user: userPrompt,
+    temperature: 0.2,
+    maxTokens: 800,
+  });
+
+  if (!result.ok) {
+    return { ok: false, reason: result.error, model: result.model };
+  }
+
+  // Try to parse JSON
+  let schema: Record<string, unknown>;
+  try {
+    // Strip markdown code fences if present
+    const cleaned = result.text
+      .replace(/^\`\`\`(?: json)?\\s*/i, "")
+      .replace(/\\s*\`\`\`\\s*$/, "")
+      .trim();
+    schema = JSON.parse(cleaned) as Record<string, unknown>;
+  } catch {
+    return { ok: false, reason: "json_parse_failed", model: result.model, raw: result.text };
+  }
+
+  // Validate it has required fields
+  if (!schema["@context"] || !schema["@type"] || !schema.name) {
+    return { ok: false, reason: "missing_required_fields", model: result.model, raw: result.text };
+  }
+
+  return { ok: true, schema, model: result.model };
+}

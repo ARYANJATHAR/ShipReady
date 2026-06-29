@@ -7,11 +7,14 @@
  */
 
 import type { Framework } from "../framework";
+import type { CodebaseContext } from "../types";
 
 export interface ManifestInput {
   framework: Framework;
   projectName: string;
   description: string;
+  /** Optional: AI-curated codebase context for brand color */
+  codebase?: CodebaseContext;
   themeColor?: string;
   backgroundColor?: string;
 }
@@ -20,7 +23,8 @@ const DEFAULT_THEME = "#0a0a09";
 const DEFAULT_BG = "#0a0a09";
 
 export function generateManifest(input: ManifestInput): { path: string; content: string } {
-  const theme = input.themeColor || DEFAULT_THEME;
+  // Use brand color from codebase if available, otherwise fallback
+  const theme = input.themeColor || input.codebase?.brandColor || DEFAULT_THEME;
   const bg = input.backgroundColor || DEFAULT_BG;
 
   if (input.framework === "nextjs" || input.framework === "remix") {
