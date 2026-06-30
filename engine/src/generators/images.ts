@@ -37,8 +37,11 @@ export interface GeneratedImage {
 }
 
 function pickBrandColor(input: ImageGeneratorInput): string {
+  // Explicit user override — return as-is (user chose it intentionally)
   if (input.brandColor) return input.brandColor;
-  if (input.codebase?.brandColor) return input.codebase.brandColor;
+  // Inferred from codebase — guard against light/washed-out colors
+  if (input.codebase?.brandColor) return ensureDarkEnough(input.codebase.brandColor);
+  // Derived from project name hash — already guarded inside nameToBrandColor
   return nameToBrandColor(input.projectName);
 }
 
@@ -48,7 +51,31 @@ function nameToBrandColor(name: string): string {
     h = (h * 31 + name.charCodeAt(i)) | 0;
   }
   const hue = Math.abs(h) % 360;
-  return hslToHex(hue, 0.6, 0.55);
+  // Use darker/richer tones: 75% saturation, 40% lightness
+  // This ensures the background is always visibly colored, never washed out.
+  const hex = hslToHex(hue, 0.75, 0.40);
+  return ensureDarkEnough(hex);
+}
+
+/**
+ * Ensure a hex color is dark enough to be visible as a favicon background.
+ * If the color is too light (all channels > 200), darken it to a medium tone.
+ */
+function ensureDarkEnough(hex: string): string {
+  const rgb = hexToRgb(hex);
+  // If all channels are > 200, the color is too light — darken to a medium shade
+  if (rgb.r > 200 && rgb.g > 200 && rgb.b > 200) {
+    return "#6366f1"; // Indigo — always visible
+  }
+  // If average brightness > 180, scale it down
+  const avg = (rgb.r + rgb.g + rgb.b) / 3;
+  if (avg > 180) {
+    const factor = 140 / avg;
+    const darken = (c: number) => Math.round(Math.min(c * factor, 200));
+    const toHex = (c: number) => Math.min(c, 255).toString(16).padStart(2, "0");
+    return "#" + toHex(darken(rgb.r)) + toHex(darken(rgb.g)) + toHex(darken(rgb.b));
+  }
+  return hex;
 }
 
 function hslToHex(h: number, s: number, l: number): string {
@@ -127,7 +154,8 @@ async function createImageWithInitials(
   height: number,
   brandColor: string,
   initials: string,
-  isWide: boolean
+  isWide: boolean,
+  projectName?: string
 ): Promise<Buffer> {
   const { r, g, b } = hexToRgb(brandColor);
 
@@ -152,7 +180,7 @@ async function createImageWithInitials(
     `font-size="${fontSize}" font-weight="bold" fill="#ffffff">${initials}</text>` +
     (isWide ? `<text x="${width / 2}" y="${height * 0.76}" text-anchor="middle" ` +
     `font-family="Arial,Helvetica,sans-serif" font-size="${Math.round(fontSize * 0.37)}" ` +
-    `fill="#ffffff">${width > 500 ? "ShipReady" : ""}</text>` : "") +
+    `fill="#ffffff">${width > 500 ? (projectName || "") : ""}</text>` : "") +
     `</svg>`
   );
 
@@ -217,35 +245,35 @@ export async function generateRealImages(
   const projectName = input.projectName;
 
   const results: GeneratedImage[] = await Promise.all([
-    createImageWithInitials(32, 32, brandColor, initials, false).then(
+    createImageWithInitials(32, 32, brandColor, initials, false, projectName).then(
       (buf) => ({
         path: "public/favicon.png",
         content: buf,
         description: "Favicon (32x32 PNG)",
       })
     ),
-    createImageWithInitials(180, 180, brandColor, initials, false).then(
+    createImageWithInitials(180, 180, brandColor, initials, false, projectName).then(
       (buf) => ({
         path: "public/apple-icon.png",
         content: buf,
         description: "Apple touch icon (180x180 PNG)",
       })
     ),
-    createImageWithInitials(192, 192, brandColor, initials, false).then(
+    createImageWithInitials(192, 192, brandColor, initials, false, projectName).then(
       (buf) => ({
         path: "public/icon-192.png",
         content: buf,
         description: "PWA icon 192x192 PNG",
       })
     ),
-    createImageWithInitials(512, 512, brandColor, initials, false).then(
+    createImageWithInitials(512, 512, brandColor, initials, false, projectName).then(
       (buf) => ({
         path: "public/icon-512.png",
         content: buf,
         description: "PWA icon 512x512 PNG",
       })
     ),
-    createImageWithInitials(1200, 630, brandColor, initials, true).then(
+    createImageWithInitials(1200, 630, brandColor, initials, true, projectName).then(
       (buf) => ({
         path: "public/opengraph-image.png",
         content: buf,

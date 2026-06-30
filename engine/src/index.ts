@@ -29,6 +29,7 @@ import { scanSecurity } from "./scanners/security";
 import { scanMeta } from "./scanners/meta";
 import { scanA11y } from "./scanners/a11y";
 import { scanBrokenLinks } from "./scanners/broken-links";
+import { scanCookieConsentBanner } from "./scanners/cookie-consent";
 import { calculateScore, groupByCategory, sortBySeverity } from "./score";
 import { generatePrivacyPolicy } from "./generators/privacy-policy";
 import { generateTerms } from "./generators/terms";
@@ -44,6 +45,7 @@ import { generateGitignoreAdditions } from "./generators/gitignore-additions";
 import { generateManifest } from "./generators/manifest";
 import { generateRealImages } from "./generators/images";
 import { generateAccessibilityStatement } from "./generators/accessibility-statement";
+import { generateCookieConsentBanner } from "./generators/cookie-consent-banner";
 import { detectFramework, type Framework, type FrameworkInfo, LABEL as FRAMEWORK_LABEL } from "./framework";
 import { aiEnabled } from "@/lib/ai";
 
@@ -54,7 +56,7 @@ export { CONTEXT_QUESTIONS, REGION_QUESTION, buildContext, deriveRules, makeCont
 export { calculateScore, groupByCategory, sortBySeverity } from "./score";
 export { computeDiff } from "./diff";
 export { buildFixesZip } from "./zip";
-export { generatePrivacyPolicy, generatePrivacyPolicyStatic, generateTerms, generateTermsStatic, generateCookiePolicy, generateCookiePolicyStatic, generateSitemap, generateRobots, generateOgTags, generateJsonLd, generateNotFound, generateErrorPage, generateGlobalError, generateSecurityTxt, generateSecurityHeaders, generateGitignoreAdditions, generateManifest, generateRealImages } from "./generators/index";
+export { generatePrivacyPolicy, generatePrivacyPolicyStatic, generateTerms, generateTermsStatic, generateCookiePolicy, generateCookiePolicyStatic, generateSitemap, generateRobots, generateOgTags, generateJsonLd, generateNotFound, generateErrorPage, generateGlobalError, generateSecurityTxt, generateSecurityHeaders, generateGitignoreAdditions, generateManifest, generateRealImages, generateCookieConsentBanner } from "./generators/index";
 export { detectFramework, frameworkPaths, hasAppRouter } from "./framework";
 export type { Framework, FrameworkInfo } from "./framework";
 export { buildCodebaseContext } from "./codebase-context";
@@ -150,6 +152,10 @@ export async function scanRepo(opts: ScanOptions): Promise<ScanResult> {
   const a11y = scanA11y({ contents, framework: frameworkInfo.framework });
   // Broken links scanner (no auto-fix — just flag issues)
   const brokenLinks = scanBrokenLinks({ files: tree.files, contents, maxFiles: 20 });
+  // Cookie consent banner scanner — only relevant when the project uses cookies
+  const cookieBanner = opts.context.usesCookies
+    ? scanCookieConsentBanner({ files: tree.files, contents })
+    : [];
 
   // Combine all issues
   const allIssues: Issue[] = [
@@ -163,6 +169,7 @@ export async function scanRepo(opts: ScanOptions): Promise<ScanResult> {
     ...meta,
     ...a11y,
     ...brokenLinks,
+    ...cookieBanner,
   ];
 
   // Sort and score
@@ -282,6 +289,7 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
         isNew: true,
         generationMode: opts.codebase && aiEnabled ? "ai" : "static",
       });
+
     }
 
     if (issue.id === "env-file-in-repo") {
@@ -423,7 +431,7 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
       // Generate all 5 real images when either favicon or OG image is missing
       const images = await generateRealImages({
         projectName,
-        brandColor: opts.projectName ? undefined : undefined, // Let it derive from name
+        brandColor: opts.codebase?.brandColor,
         codebase: opts.codebase,
       });
       // Add each generated image as a separate fix
@@ -488,6 +496,21 @@ export async function generateFixes(opts: GenerateFixesOptions): Promise<Fix[]> 
         : [".env", "node_modules", ".next", "dist", "build"];
       const { path, content } = generateGitignoreAdditions({
         requested: missing,
+      });
+    }
+
+    if (issue.id === "missing-cookie-consent-banner" && ctx.usesCookies) {
+      const banner = generateCookieConsentBanner({
+        framework: scan.repo.framework,
+        projectName,
+        servesEuUsers: ctx.servesEuUsers,
+      });
+      fixes.push({
+        path: banner.path,
+        content: banner.content,
+        description: "Cookie consent banner — GDPR-compliant, stores preference in localStorage",
+        issueId: issue.id,
+        isNew: true,
       });
     }
 

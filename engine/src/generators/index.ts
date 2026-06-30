@@ -12,5 +12,6 @@ export * from "./gitignore-additions";
 export * from "./manifest";
 export * from "./images";
 export * from "./accessibility-statement";
+export * from "./cookie-consent-banner";
 // AI prompts are internal — keep them out of the public re-exports.
 // Tests can import them directly when needed.
